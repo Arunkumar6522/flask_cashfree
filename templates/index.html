@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cashfree Checkout Integration</title>
+    <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .package {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .package:hover {
+            background-color: #f0f0f0;
+        }
+        .selected {
+            background-color: #e0e0e0;
+            font-weight: bold;
+        }
+        #errorMessage, #debugInfo {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Cashfree Payment Gateway Demo</h1>
+    <p>Select a package:</p>
+    <div id="limitedPack" class="package" data-price="1000">
+        <h3>Limited Pack</h3>
+        <p>Price: ₹1,000</p>
+    </div>
+    <div id="unlimitedPack" class="package" data-price="5000">
+        <h3>Unlimited Pack</h3>
+        <p>Price: ₹5,000</p>
+    </div>
+    <p>Selected package: <span id="selectedPackage">None</span></p>
+    <button id="payButton" disabled>Pay Now</button>
+    <div id="errorMessage"></div>
+    <div id="debugInfo"></div>
+
+    <script>
+        const cashfree = Cashfree({
+            mode: "sandbox"  // Use "production" for live payments
+        });
+
+        let selectedPrice = 0;
+
+        function selectPackage(packageId) {
+            const packages = document.getElementsByClassName('package');
+            for (let pkg of packages) {
+                pkg.classList.remove('selected');
+            }
+            const selectedPkg = document.getElementById(packageId);
+            selectedPkg.classList.add('selected');
+            selectedPrice = parseInt(selectedPkg.getAttribute('data-price'));
+            document.getElementById('selectedPackage').textContent = `${packageId} (₹${selectedPrice})`;
+            document.getElementById("payButton").disabled = false;
+        }
+
+        document.getElementById('limitedPack').addEventListener('click', () => selectPackage('limitedPack'));
+        document.getElementById('unlimitedPack').addEventListener('click', () => selectPackage('unlimitedPack'));
+
+        document.getElementById("payButton").addEventListener("click", async () => {
+            if (selectedPrice === 0) {
+                showError("Please select a package first.");
+                return;
+            }
+
+            try {
+                showDebug("Attempting to create order...");
+                // Create order and get payment session ID from your server
+                const response = await fetch('http://localhost:8080/create_order', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        amount: selectedPrice,
+                        currency: "INR",
+                        customerName: "John Doe",
+                        customerPhone: "9999999999",
+                        customerEmail: "johndoe@example.com",
+                    }),
+                });
+
+                showDebug("Response received. Status: " + response.status);
+
+                if (!response.ok) {
+                    throw new Error('Failed to create order. Status: ' + response.status);
+                }
+
+                const data = await response.json();
+                showDebug("Order data received: " + JSON.stringify(data));
+
+                if (!data.paymentSessionId) {
+                    throw new Error('Payment session ID is missing');
+                }
+
+                showDebug("Initiating Cashfree checkout...");
+
+                const checkoutOptions = {
+                    paymentSessionId: data.paymentSessionId,
+                    redirectTarget: "_self"
+                };
+
+                cashfree.checkout(checkoutOptions).then(function(result){
+                    if(result.error) {
+                        showError(result.error.message);
+                    }
+                });
+            } catch (error) {
+                console.error("Error:", error);
+                showError("An error occurred: " + error.message);
+            }
+        });
+
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+        }
+
+        function showDebug(message) {
+            const debugElement = document.getElementById('debugInfo');
+            debugElement.innerHTML += message + "<br>";
+        }
+    </script>
+</body>
+</html>
